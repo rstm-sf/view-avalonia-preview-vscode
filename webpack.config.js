@@ -6,6 +6,9 @@ import { resolve as _resolve } from 'path';
 
 /**@type {import('webpack').Configuration}*/
 const config = {
+  infrastructureLogging: {
+    level: 'log',
+  },
   target: 'node', // vscode extensions run in a Node.js-context 📖 -> https://webpack.js.org/configuration/node/
   mode: 'none', // this leaves the source code as close as possible to the original (when packaging we set this to 'production')
 
