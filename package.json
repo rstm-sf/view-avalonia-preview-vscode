@@ -3,12 +3,22 @@
     "displayName": "view-avalonia-preview",
     "description": "",
     "version": "0.0.1",
+    "publisher": "rstm-sf",
     "engines": {
         "vscode": "^1.53.0"
     },
     "categories": [
         "Other"
     ],
+    "keywords": [
+        "avalonia",
+        "xaml-preview"
+    ],
+    "repository": {
+        "type": "git",
+        "url": "https://github.com/rstm-sf/view-avalonia-preview-vscode"
+    },
+    "license": "MIT",
     "activationEvents": [
         "onView:view-avalonia-preview.AvaloniaPreview"
     ],
@@ -32,7 +42,8 @@
         "test-compile": "tsc -p ./",
         "test-watch": "tsc -watch -p ./",
         "pretest": "npm run test-compile && npm run lint",
-        "lint": "eslint src --ext ts"
+        "lint": "eslint src --ext ts",
+        "deploy": "vsce package"
     },
     "devDependencies": {
         "@types/node": "^12.11.7",
@@ -42,6 +53,7 @@
         "eslint": "^7.19.0",
         "ts-loader": "^8.0.14",
         "typescript": "^4.1.3",
+        "vsce": "^1.85.0",
         "webpack": "^5.19.0",
         "webpack-cli": "^4.4.0"
     }
