@@ -1,21 +1,26 @@
-import { ChildProcessWithoutNullStreams, exec, spawn } from 'child_process';
-import * as fs from 'fs';
+import { ChildProcessWithoutNullStreams, spawn } from 'child_process';
 import * as path from 'path';
 import * as vscode from 'vscode';
 import { AvaloniaPreviewProvider } from './AvaloniaPreviewProvider';
+import { findAssemblyInfoCollection, findAvaloniaPreviewTool } from './dotnetUtils';
+import { findProjectOrSolutionFilePath as findProjectOrSolutionFileName } from './fsUtils';
 import { IAssemblyInfo } from './IAssemblyInfo';
 
 const srcLink = 'http://127.0.0.1:6001/';
 
 let _currentDoc: vscode.TextDocument;
 let _provider: AvaloniaPreviewProvider;
-let _previewToolPath: string | undefined;
-let _assemblyNameToPathCollection: Array<IAssemblyInfo> | undefined;
+let _previewToolPath: string;
+let _assemblyNameToPathCollection: Array<IAssemblyInfo> = Array<IAssemblyInfo>();
 let _previewerProcess: ChildProcessWithoutNullStreams | undefined;
 
-export function activate(context: vscode.ExtensionContext) {
+export async function activate(context: vscode.ExtensionContext): Promise<void> {
 
-    initializeRequirements();
+    await initializeRequirements();
+
+    if (_previewToolPath === '') {
+        return;
+    }
 
     _provider = new AvaloniaPreviewProvider;
 
@@ -32,73 +37,23 @@ export function activate(context: vscode.ExtensionContext) {
 
 export function deactivate() {}
 
-function initializeRequirements() {
+async function initializeRequirements(): Promise<void> {
     if (vscode.workspace.workspaceFolders !== undefined) {
-        initAssembly(vscode.workspace.workspaceFolders as vscode.WorkspaceFolder[]);
-        initPrewiewToolPath();
+        for (const workspaceFolder of vscode.workspace.workspaceFolders) {
+            const fileName = await findProjectOrSolutionFileName(workspaceFolder);
+            if (fileName === '') {
+                return;
+            }
+            
+            const result = await findAssemblyInfoCollection(path.join(workspaceFolder.uri.fsPath, fileName));
+            _assemblyNameToPathCollection = _assemblyNameToPathCollection.concat(result);
+        }
+        
+        _previewToolPath = await findAvaloniaPreviewTool();
     } else {
         let message = "view-avalonia-preview: Working folder not found, open a folder an try again";
         vscode.window.showErrorMessage(message);
     }
-}
-
-function initAssembly(workspaceFolders: vscode.WorkspaceFolder[]) {
-    workspaceFolders.forEach(folder => fs.readdir(folder.uri.fsPath, (err, files) => {
-        if (err === null) {
-            let file = files.find(x => {
-                var ext = path.extname(x);
-                return ext === '.sln' || ext === '.csproj';
-            });
-
-            if (file === undefined) {
-                return;
-            }
-
-            exec('dotnet build '.concat(path.join(folder.uri.fsPath, file!)) + ' --nologo')
-                .stdout?.on('data', (data: string) => {
-                    let keys = data.split('\n')
-                        .filter(x => x.indexOf('.dll') > 0)
-                        .map(
-                            x => {
-                                const kv = x.split(' -> ');
-
-                                const name = kv[0].trimStart();
-                                const dllPath = path.normalize(kv[1].replace(/\r/g, ''));
-
-                                const dllDirectory = path.dirname(dllPath);
-
-                                let csprojDirectory = dllDirectory.split(path.sep)
-                                    .filter(x => !x.startsWith('net') && !x.startsWith('Debug') && !x.startsWith('bin'))
-                                    .join(path.sep);
-
-                                return <IAssemblyInfo>{
-                                    name: name,
-                                    dllPath: dllPath,
-                                    csprojDirectory: csprojDirectory,
-                                    runtimeConfigPath: path.join(dllDirectory, name + '.runtimeconfig.json'),
-                                    depsPath: path.join(dllDirectory, name + '.deps.json'),
-                                };
-                            });
-
-                    if (_assemblyNameToPathCollection === undefined) {
-                        _assemblyNameToPathCollection = keys;
-                    } else {
-                        _assemblyNameToPathCollection = _assemblyNameToPathCollection.concat(keys);
-                    }
-                });
-        }
-    }));
-}
-
-function initPrewiewToolPath() {
-    exec('dotnet nuget locals global-packages --list')
-        .stdout?.on('data', (data: string) => {
-            _previewToolPath = path.normalize(data
-                .split(': ')
-                .pop()!
-                .replace(/(\r|\n)/g, '')
-                .concat('avalonia/0.10.0/tools/netcoreapp2.0/designer/Avalonia.Designer.HostApp.dll'));
-        });
 }
 
 function openPreview(editor: vscode.TextEditor | undefined) {
@@ -141,19 +96,20 @@ function getHtmlForWebview(): string {
 }
 
 function getPreviewerProcess(fileName: string): ChildProcessWithoutNullStreams | undefined {
-    if (_previewToolPath === undefined || _assemblyNameToPathCollection === undefined) {
+
+    const assembly = _assemblyNameToPathCollection.find(x => fileName.startsWith(x.csprojDirectory));
+    if (assembly === undefined) {
         return undefined;
     }
 
-    const assembly = _assemblyNameToPathCollection.find(x => fileName.startsWith(x.csprojDirectory))!;
     return spawn(
         'dotnet',
         [
             'exec',
             '--runtimeconfig',
-            assembly.runtimeConfigPath,
+            assembly!.runtimeConfigPath,
             '--depsfile',
-            assembly.depsPath,
+            assembly!.depsPath,
             _previewToolPath!,
             '--transport',
             'file://' + fileName,
@@ -161,7 +117,7 @@ function getPreviewerProcess(fileName: string): ChildProcessWithoutNullStreams |
             'html',
             '--html-url',
             srcLink,
-            assembly.dllPath
+            assembly!.dllPath
         ]
     );
 }
