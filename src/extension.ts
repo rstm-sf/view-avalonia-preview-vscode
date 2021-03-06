@@ -12,27 +12,40 @@ let _currentDoc: vscode.TextDocument;
 let _provider: AvaloniaPreviewProvider;
 let _previewToolPath: string;
 let _assemblyNameToPathCollection: Array<IAssemblyInfo> = Array<IAssemblyInfo>();
-let _previewerProcess: ChildProcessWithoutNullStreams | undefined;
+let _previewerProcess: ChildProcessWithoutNullStreams | null;
 
 export async function activate(context: vscode.ExtensionContext): Promise<void> {
 
-    await initializeRequirements();
+    const outputChannel = vscode.window.createOutputChannel('View-Avalonia-Preview');
+    const progressOptions: vscode.ProgressOptions = {
+        location: vscode.ProgressLocation.Window
+    };
 
-    if (_previewToolPath === '') {
-        return;
-    }
+    await vscode.window.withProgress(progressOptions, async progress => {
 
-    _provider = new AvaloniaPreviewProvider;
+        progress.report({
+            message: 'Initialising View for Avalonia Preview...'
+        });
 
-    context.subscriptions.push(
-        vscode.window.registerWebviewViewProvider(AvaloniaPreviewProvider.viewType, _provider));
+        await initializeRequirements();
 
-    vscode.window.onDidChangeActiveTextEditor(editor => {
-        return openPreview(editor);
+        if (_previewToolPath === '') {
+            outputChannel.appendLine(`Cannot initialize View for Avalonia Preview.`);
+            return;
+        }
+
+        _provider = new AvaloniaPreviewProvider;
+
+        context.subscriptions.push(
+            vscode.window.registerWebviewViewProvider(AvaloniaPreviewProvider.viewType, _provider));
+
+        vscode.window.onDidChangeActiveTextEditor(editor => {
+            return openPreview(editor);
+        });
+
+        // Try preview when this extension is activated the first time
+        openPreview(vscode.window.activeTextEditor);
     });
-
-    // Try preview when this extension is activated the first time
-    openPreview(vscode.window.activeTextEditor);
 }
 
 export function deactivate() {}
@@ -57,7 +70,8 @@ async function initializeRequirements(): Promise<void> {
 }
 
 function openPreview(editor: vscode.TextEditor | undefined) {
-    closePreview();
+
+    _previewerProcess?.kill('SIGKILL');
 
     if (!editor) {
         return;
@@ -72,10 +86,11 @@ function openPreview(editor: vscode.TextEditor | undefined) {
 
     if (doc !== _currentDoc) {
         _previewerProcess = getPreviewerProcess(doc.fileName);
-        if (_previewerProcess === undefined) {
+        if (_previewerProcess === null) {
             return;
         }
 
+        _previewerProcess.on('exit', () => _provider.setHtmlToWebview(''));
         _provider.setHtmlToWebview(getHtmlForWebview());
         _currentDoc = doc;
     }
@@ -95,11 +110,11 @@ function getHtmlForWebview(): string {
         <iframe width = "100%"" height="100%" src="${srcLink}" frameborder="0" />`;
 }
 
-function getPreviewerProcess(fileName: string): ChildProcessWithoutNullStreams | undefined {
+function getPreviewerProcess(fileName: string): ChildProcessWithoutNullStreams | null {
 
     const assembly = _assemblyNameToPathCollection.find(x => fileName.startsWith(x.csprojDirectory));
     if (assembly === undefined) {
-        return undefined;
+        return null;
     }
 
     return spawn(
@@ -120,9 +135,4 @@ function getPreviewerProcess(fileName: string): ChildProcessWithoutNullStreams |
             assembly!.dllPath
         ]
     );
-}
-
-function closePreview() {
-    _provider.setHtmlToWebview('');
-    _previewerProcess?.kill('SIGKILL');
 }
