@@ -1,22 +1,18 @@
 import { ChildProcessWithoutNullStreams, spawn } from 'child_process';
-import * as path from 'path';
 import * as vscode from 'vscode';
+import { LanguageClient } from 'vscode-languageclient/node';
 import { AvaloniaPreviewProvider } from './AvaloniaPreviewProvider';
-import { findAssemblyInfoCollection, findAvaloniaPreviewTool } from './dotnetUtils';
-import { findProjectOrSolutionFilePath as findProjectOrSolutionFileName } from './fsUtils';
-import { IAssemblyInfo } from './IAssemblyInfo';
+import { createLanguageClient } from './languageClientUtils';
+import { handlePreviewNotifications, PreviewParameters } from './notifications';
 
 const srcLink = 'http://127.0.0.1:6001/';
 
-let _currentDoc: vscode.TextDocument;
+let _client: LanguageClient;
 let _provider: AvaloniaPreviewProvider;
-let _previewToolPath: string;
-let _assemblyNameToPathCollection: Array<IAssemblyInfo> = Array<IAssemblyInfo>();
-let _previewerProcess: ChildProcessWithoutNullStreams | null;
+let _previewerProcess: ChildProcessWithoutNullStreams;
 
 export async function activate(context: vscode.ExtensionContext): Promise<void> {
 
-    const outputChannel = vscode.window.createOutputChannel('View-Avalonia-Preview');
     const progressOptions: vscode.ProgressOptions = {
         location: vscode.ProgressLocation.Window
     };
@@ -27,73 +23,29 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
             message: 'Initialising View for Avalonia Preview...'
         });
 
-        await initializeRequirements();
-
-        if (_previewToolPath === '') {
-            outputChannel.appendLine(`Cannot initialize View for Avalonia Preview.`);
-            return;
-        }
-
         _provider = new AvaloniaPreviewProvider;
+
+        _client = createLanguageClient(context);
+        const disposable = _client.start();
+        context.subscriptions.push(disposable);
+
+        handlePreviewNotifications(_client, function (parameters: PreviewParameters): void {
+            _previewerProcess?.kill('SIGKILL');
+            _previewerProcess = getPreviewerProcess(parameters);
+            _previewerProcess.on('exit', () => _provider.setHtmlToWebview(''));
+            _provider.setHtmlToWebview(getHtmlForWebview());
+        });
 
         context.subscriptions.push(
             vscode.window.registerWebviewViewProvider(AvaloniaPreviewProvider.viewType, _provider));
-
-        vscode.window.onDidChangeActiveTextEditor(editor => {
-            return openPreview(editor);
-        });
-
-        // Try preview when this extension is activated the first time
-        openPreview(vscode.window.activeTextEditor);
     });
 }
 
-export function deactivate() {}
-
-async function initializeRequirements(): Promise<void> {
-    if (vscode.workspace.workspaceFolders !== undefined) {
-        for (const workspaceFolder of vscode.workspace.workspaceFolders) {
-            const fileName = await findProjectOrSolutionFileName(workspaceFolder);
-            if (fileName === '') {
-                return;
-            }
-            
-            const result = await findAssemblyInfoCollection(path.join(workspaceFolder.uri.fsPath, fileName));
-            _assemblyNameToPathCollection = _assemblyNameToPathCollection.concat(result);
-        }
-        
-        _previewToolPath = await findAvaloniaPreviewTool();
-    } else {
-        let message = "view-avalonia-preview: Working folder not found, open a folder an try again";
-        vscode.window.showErrorMessage(message);
+export function deactivate(): Thenable<void> | undefined {
+    if (!_client) {
+        return undefined;
     }
-}
-
-function openPreview(editor: vscode.TextEditor | undefined) {
-
-    _previewerProcess?.kill('SIGKILL');
-
-    if (!editor) {
-        return;
-    }
-
-    let doc = editor.document;
-    let extName = path.extname(doc.fileName);
-    let isXaml = extName === '.axaml' || extName === '.xaml' || extName === '.paml';
-    if (!isXaml) {
-        return;
-    }
-
-    if (doc !== _currentDoc) {
-        _previewerProcess = getPreviewerProcess(doc.fileName);
-        if (_previewerProcess === null) {
-            return;
-        }
-
-        _previewerProcess.on('exit', () => _provider.setHtmlToWebview(''));
-        _provider.setHtmlToWebview(getHtmlForWebview());
-        _currentDoc = doc;
-    }
+    return _client.stop();
 }
 
 function getHtmlForWebview(): string {
@@ -110,29 +62,23 @@ function getHtmlForWebview(): string {
         <iframe width = "100%"" height="100%" src="${srcLink}" frameborder="0" />`;
 }
 
-function getPreviewerProcess(fileName: string): ChildProcessWithoutNullStreams | null {
-
-    const assembly = _assemblyNameToPathCollection.find(x => fileName.startsWith(x.csprojDirectory));
-    if (assembly === undefined) {
-        return null;
-    }
-
+function getPreviewerProcess(parameters: PreviewParameters): ChildProcessWithoutNullStreams {
     return spawn(
         'dotnet',
         [
             'exec',
             '--runtimeconfig',
-            assembly!.runtimeConfigPath,
+            parameters.projectRuntimeConfigFilePath,
             '--depsfile',
-            assembly!.depsPath,
-            _previewToolPath!,
+            parameters.projectDepsFilePath,
+            parameters.avaloniaPreviewPath,
             '--transport',
-            'file://' + fileName,
+            'file://' + parameters.xamlFilePath,
             '--method',
             'html',
             '--html-url',
             srcLink,
-            assembly!.dllPath
+            parameters.targetPath
         ]
     );
 }
