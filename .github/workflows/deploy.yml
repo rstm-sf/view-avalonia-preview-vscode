@@ -24,10 +24,18 @@ jobs:
         git submodule sync --recursive
         git submodule update --init --recursive
 
-    - name: Setup .NET SDK 3.1.408
+    - name: Setup .NET SDK
       uses: actions/setup-dotnet@v1
       with:
-        dotnet-version: 3.1.408
+        dotnet-version: 5.0.x
+
+    - name: Build lsp-server
+      env:
+        DOTNET_CLI_TELEMETRY_OPTOUT: 1
+        DOTNET_SKIP_FIRST_TIME_EXPERIENCE: 1
+        DOTNET_NOLOGO: 1
+      working-directory: lib/AvaloniaPreviewLanguageServer/src/AvaloniaPreviewLanguageServer
+      run: dotnet publish -c Release -o ../../../../dist/LanguageServer/ -p:DebugType=None;DebugSymbols=false
 
     - name: Use Node.js ${{ env.node-version }}
       uses: actions/setup-node@v1
