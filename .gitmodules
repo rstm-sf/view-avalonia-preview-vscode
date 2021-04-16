@@ -1,0 +1,4 @@
+[submodule "lib/AvaloniaPreviewLanguageServer"]
+	path = lib/AvaloniaPreviewLanguageServer
+	url = https://github.com/rstm-sf/AvaloniaPreviewLanguageServer.git
+	branch = main

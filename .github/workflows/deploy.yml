@@ -1,0 +1,51 @@
+name: Extension CI
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+env:
+  node-version: 12.x
+
+jobs:
+  deploy:
+
+    name: Package
+    runs-on: ubuntu-latest
+
+    steps:
+    - uses: actions/checkout@v2
+
+    - name: Checkout submodules
+      shell: bash
+      run: |
+        git submodule sync --recursive
+        git submodule update --init --recursive
+
+    - name: Setup .NET SDK
+      uses: actions/setup-dotnet@v1
+      with:
+        dotnet-version: 5.0.x
+
+    - name: Build lsp-server
+      env:
+        DOTNET_CLI_TELEMETRY_OPTOUT: 1
+        DOTNET_SKIP_FIRST_TIME_EXPERIENCE: 1
+        DOTNET_NOLOGO: 1
+      working-directory: lib/AvaloniaPreviewLanguageServer/src/AvaloniaPreviewLanguageServer
+      run: dotnet publish -c Release -o ../../../../dist/LanguageServer/ -p:DebugType=None;DebugSymbols=false
+
+    - name: Use Node.js ${{ env.node-version }}
+      uses: actions/setup-node@v1
+      with:
+        node-version: ${{ env.node-version }}
+    - run: npm install
+    - run: npm run deploy
+
+    - name: Upload package
+      uses: actions/upload-artifact@v2
+      with:
+        name: artifacts-view-avalonia-preview-vscode
+        path: ./*.vsix
