@@ -1,15 +1,11 @@
-import { ChildProcessWithoutNullStreams, spawn } from 'child_process';
 import * as vscode from 'vscode';
 import { LanguageClient } from 'vscode-languageclient/node';
 import { AvaloniaPreviewProvider } from './AvaloniaPreviewProvider';
 import { createLanguageClient } from './languageClientUtils';
-import { handlePreviewNotifications, PreviewParameters } from './notifications';
-
-const srcLink = 'http://127.0.0.1:6001/';
+import { handleStartPreviewNotifications, handleStopPreviewNotifications, StartPreviewMessage } from './notifications';
 
 let _client: LanguageClient;
 let _provider: AvaloniaPreviewProvider;
-let _previewerProcess: ChildProcessWithoutNullStreams;
 
 export async function activate(context: vscode.ExtensionContext): Promise<void> {
 
@@ -29,11 +25,12 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
         const disposable = _client.start();
         context.subscriptions.push(disposable);
 
-        handlePreviewNotifications(_client, function (parameters: PreviewParameters): void {
-            _previewerProcess?.kill('SIGKILL');
-            _previewerProcess = getPreviewerProcess(parameters);
-            _previewerProcess.on('exit', () => _provider.setHtmlToWebview(''));
-            _provider.setHtmlToWebview(getHtmlForWebview());
+        handleStartPreviewNotifications(_client, function (parameters: StartPreviewMessage): void {
+            _provider.setHtmlToWebview(getHtmlForWebview(parameters.htmlUrl));
+        });
+
+        handleStopPreviewNotifications(_client, function (): void {
+            _provider.setHtmlToWebview('');
         });
 
         context.subscriptions.push(
@@ -48,7 +45,7 @@ export function deactivate(): Thenable<void> | undefined {
     return _client.stop();
 }
 
-function getHtmlForWebview(): string {
+function getHtmlForWebview(htmlUrl: string): string {
     return `<style>
             body {
                 margin: 0;
@@ -59,26 +56,5 @@ function getHtmlForWebview(): string {
                 left: 0;
             }
         </style>
-        <iframe width = "100%"" height="100%" src="${srcLink}" frameborder="0" />`;
-}
-
-function getPreviewerProcess(parameters: PreviewParameters): ChildProcessWithoutNullStreams {
-    return spawn(
-        'dotnet',
-        [
-            'exec',
-            '--runtimeconfig',
-            parameters.projectRuntimeConfigFilePath,
-            '--depsfile',
-            parameters.projectDepsFilePath,
-            parameters.avaloniaPreviewPath,
-            '--transport',
-            'file://' + parameters.xamlFilePath,
-            '--method',
-            'html',
-            '--html-url',
-            srcLink,
-            parameters.targetPath
-        ]
-    );
+        <iframe width = "100%"" height="100%" src="${htmlUrl}" frameborder="0" />`;
 }
