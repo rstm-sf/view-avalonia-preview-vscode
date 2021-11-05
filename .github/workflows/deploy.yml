@@ -7,7 +7,7 @@ on:
     branches: [ main ]
 
 env:
-  node-version: 12.x
+  node-version: 14.x
 
 jobs:
   deploy:
