@@ -2,7 +2,7 @@
     "name": "view-avalonia-preview",
     "displayName": "view-avalonia-preview",
     "description": "",
-    "version": "0.0.3",
+    "version": "0.0.4",
     "publisher": "rstm-sf",
     "engines": {
         "vscode": "^1.61.0"

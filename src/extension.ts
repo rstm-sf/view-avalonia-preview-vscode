@@ -19,14 +19,14 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
             message: 'Initialising View for Avalonia Preview...'
         });
 
-        _provider = new AvaloniaPreviewProvider;
+        _provider = new AvaloniaPreviewProvider(context.extensionUri);
 
         _client = createLanguageClient(context);
         const disposable = _client.start();
         context.subscriptions.push(disposable);
 
         handleStartPreviewNotifications(_client, function (parameters: StartPreviewMessage): void {
-            _provider.setHtmlToWebview(getHtmlForWebview(parameters.htmlUrl));
+            _provider.setHtmlToWebview(parameters.htmlUrl);
         });
 
         handleStopPreviewNotifications(_client, function (): void {
@@ -43,18 +43,4 @@ export function deactivate(): Thenable<void> | undefined {
         return undefined;
     }
     return _client.stop();
-}
-
-function getHtmlForWebview(htmlUrl: string): string {
-    return `<style>
-            body {
-                margin: 0;
-            }
-            iframe{
-                position: fixed;
-                top: 0;
-                left: 0;
-            }
-        </style>
-        <iframe width = "100%"" height="100%" src="${htmlUrl}" frameborder="0" />`;
 }
