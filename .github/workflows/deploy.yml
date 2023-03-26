@@ -16,7 +16,7 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-    - uses: actions/checkout@v2
+    - uses: actions/checkout@v3
 
     - name: Checkout submodules
       shell: bash
@@ -25,9 +25,9 @@ jobs:
         git submodule update --init --recursive
 
     - name: Setup .NET SDK
-      uses: actions/setup-dotnet@v1
+      uses: actions/setup-dotnet@v3
       with:
-        dotnet-version: 5.0.x
+        dotnet-version: 6.0.x
 
     - name: Build lsp-server
       env:
@@ -38,14 +38,14 @@ jobs:
       run: dotnet publish -c Release -o ../../../../dist/LanguageServer/ -p:DebugType=None;DebugSymbols=false
 
     - name: Use Node.js ${{ env.node-version }}
-      uses: actions/setup-node@v1
+      uses: actions/setup-node@v3
       with:
         node-version: ${{ env.node-version }}
     - run: npm install
     - run: npm run deploy
 
     - name: Upload package
-      uses: actions/upload-artifact@v2
+      uses: actions/upload-artifact@v3
       with:
         name: artifacts-view-avalonia-preview-vscode
         path: ./*.vsix
