@@ -51,3 +51,9 @@ jobs:
       with:
         name: artifacts-view-avalonia-preview-vscode
         path: ./*.vsix
+
+    - name: Publish to Open VSX Registry
+      uses: HaaLeo/publish-vscode-extension@v1
+      with:
+        extensionFile: ./*.vsix
+        pat: ${{ secrets.OPEN_VSX_TOKEN }}
